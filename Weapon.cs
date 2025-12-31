@@ -1,116 +1,224 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Weapon : MonoBehaviour
 {
-    [Header("Основные настройки")]
-    public int damage = 10;
-    public float range = 100f; // Дальность выстрела
-    public float fireRate = 10f; // Выстрелов в секунду
-    public int maxAmmo = 30; // Максимальный патрон в магазине
-    public float reloadTime = 1.5f; // Время перезарядки
+    [Header("Настройки")]
+    public float damage = 10f;
+    public float range = 100f;
+    public float fireRate = 10f;
+    public int maxAmmo = 30;
+    public float reloadTime = 1.5f;
 
-    [Header("Эффекты")]
-    public ParticleSystem muzzleFlash; // Эффект дульного пламени
-    public GameObject impactEffect; // Эффект попадания (дым, искры)
+    [Header("Прицел")]
+    public Image crosshairImage; 
 
-    [Header("Точка выстрела")]
-    public Camera playerCamera; // Камера, из которой ведётся стрельба
+    [Header("UI")]
+    public Text ammoText; 
 
-    private int currentAmmo; // Текущие патроны
+    [Header("Звуки")]
+    public AudioClip shootSound;
+    public AudioClip reloadSound;
+    private AudioSource audioSource;
+
+    private int currentAmmo;
     private bool isReloading = false;
-    private float nextTimeToFire = 0f; // Таймер для скорострельности
+    private float nextTimeToFire = 0f;
 
+    //ПРИЦЕЛ
+    public Texture2D crosshairTexture; 
+    public Vector2 size = new Vector2(32, 32); 
+
+    //ТЕКСТ
+    public Weapon weapon; // Ссылка на оружие
+    [Header("Позиция на экране")]
+    public Vector2 position = new Vector2(10, 100); 
+    public bool rightAlign = true;
+    [Header("Настройки текста")]
+    public int fontSize = 22;
+    
     void Start()
     {
         currentAmmo = maxAmmo;
-
-        // Найти камеру, если не назначена
-        if (playerCamera == null)
+        
+        audioSource = GetComponent<AudioSource>();
+        if (audioSource == null)
         {
-            playerCamera = GetComponentInParent<Camera>();
-            if (playerCamera == null)
-            {
-                playerCamera = Camera.main;
-            }
+            audioSource = gameObject.AddComponent<AudioSource>();
         }
+        
+        UpdateUI();
     }
 
     void Update()
     {
-        // Проверка на перезарядку
-        if (isReloading)
-            return;
+        if (isReloading) return;
 
-        // Автоматическая перезарядка, если патроны кончились
         if (currentAmmo <= 0)
         {
-            StartCoroutine(Reload());
+            StartReload();
             return;
         }
 
-        // Стрельба: зажата ЛКМ для автоматического огня
         if (Input.GetButton("Fire1") && Time.time >= nextTimeToFire)
         {
             nextTimeToFire = Time.time + 1f / fireRate;
             Shoot();
         }
 
-        // Ручная перезарядка по клавише R
         if (Input.GetKeyDown(KeyCode.R) && currentAmmo < maxAmmo)
         {
-            StartCoroutine(Reload());
+            StartReload();
         }
     }
 
     void Shoot()
     {
-        // Воспроизвести эффект дульного пламени
-        if (muzzleFlash != null)
-            muzzleFlash.Play();
-
-        // Уменьшить патроны
+        if (shootSound != null)
+        {
+            audioSource.PlayOneShot(shootSound);
+        }
+        
         currentAmmo--;
 
-        // Создать луч (Raycast) из центра камеры
         RaycastHit hit;
-        if (Physics.Raycast(playerCamera.transform.position, 
-                           playerCamera.transform.forward, 
+        if (Physics.Raycast(Camera.main.transform.position, 
+                           Camera.main.transform.forward, 
                            out hit, 
                            range))
         {
-            // Проверить, попали ли во врага
             EnemyHealth enemy = hit.transform.GetComponent<EnemyHealth>();
             if (enemy != null)
             {
-                // Нанести урон врагу
-                enemy.TakeDamage(damage);
+                enemy.TakeDamage((int)damage);
             }
+        }
+        
+        UpdateUI();
+    }
 
-            // Создать эффект попадания в точке удара
-            if (impactEffect != null)
-            {
-                GameObject impact = Instantiate(impactEffect, 
-                                               hit.point, 
-                                               Quaternion.LookRotation(hit.normal));
-                Destroy(impact, 2f); // Удалить эффект через 2 секунды
-            }
+    void StartReload()
+    {
+        if (isReloading || currentAmmo >= maxAmmo) return;
+        
+        isReloading = true;
+        
+        if (reloadSound != null)
+        {
+            audioSource.PlayOneShot(reloadSound);
+        }
+        
+        Invoke("FinishReload", reloadTime);
+    }
+
+    void FinishReload()
+    {
+        currentAmmo = maxAmmo;
+        isReloading = false;
+        UpdateUI();
+    }
+
+    void UpdateUI()
+    {
+        if (ammoText != null)
+        {
+            ammoText.text = $"{currentAmmo} / {maxAmmo}";
         }
     }
 
-    System.Collections.IEnumerator Reload()
-    {
-        isReloading = true;
-        Debug.Log("Перезарядка...");
-
-        // Анимация или звук перезарядки (здесь просто ждём)
-        yield return new WaitForSeconds(reloadTime);
-
-        currentAmmo = maxAmmo;
-        isReloading = false;
-        Debug.Log("Перезарядка завершена.");
-    }
-
-    // Метод для UI (покажем позже)
+    // Методы для получения информации (для других скриптов)
     public int GetCurrentAmmo() { return currentAmmo; }
     public int GetMaxAmmo() { return maxAmmo; }
+    public bool IsReloading() { return isReloading; }
+    public float GetReloadProgress()
+    {
+        if (!isReloading) return 1f;
+        return 0f;
+    }
+
+    void OnGUI()
+    {
+        if (crosshairTexture == null) return;
+        
+        // Позиция в центре экрана
+        float x = Screen.width / 2 - size.x / 2;
+        float y = Screen.height / 2 - size.y / 2;
+        
+        // Рисуем прицел
+        GUI.DrawTexture(new Rect(x, y, size.x, size.y), crosshairTexture);
+    }
+
+    void OnGUI1()
+    {
+        if (weapon == null)
+        {
+            Debug.LogWarning("Weapon не назначен в AmmoUI!");
+            return;
+        }
+        
+        // Получаем данные из оружия
+        int currentAmmo = weapon.GetCurrentAmmo();
+        int maxAmmo = weapon.GetMaxAmmo();
+        bool isReloading = weapon.IsReloading();
+        
+        // Создаем стиль текста
+        GUIStyle style = new GUIStyle(GUI.skin.label);
+        style.fontSize = fontSize;
+        style.fontStyle = FontStyle.Bold;
+        
+        // Формируем текст
+        string ammoText = $"ПАТРОНЫ: {currentAmmo} / {maxAmmo}";
+        string statusText = "";
+        
+        if (isReloading)
+        {
+            statusText = "СТАТУС: ПЕРЕЗАРЯДКА";
+        }
+        else if (currentAmmo == 0)
+        {
+            statusText = "СТАТУС: ПУСТО!";
+        }
+        else if (currentAmmo <= maxAmmo / 4)
+        {
+            statusText = "СТАТУС: МАЛО ПАТРОНОВ";
+        }
+        else
+        {
+            statusText = "СТАТУС: ГОТОВ";
+        }
+        
+        // Вычисляем ширину текста
+        Vector2 textSize1 = style.CalcSize(new GUIContent(ammoText));
+        Vector2 textSize2 = style.CalcSize(new GUIContent(statusText));
+        float maxWidth = Mathf.Max(textSize1.x, textSize2.x);
+        
+        // Позиция (правый нижний угол или левый верхний)
+        float xPos, yPos;
+        
+        if (rightAlign)
+        {
+            // Правый нижний угол
+            xPos = Screen.width - maxWidth - position.x;
+            yPos = Screen.height - textSize1.y - textSize2.y - position.y - 10;
+        }
+        else
+        {
+            // Левый верхний угол (как у волн)
+            xPos = position.x;
+            yPos = position.y;
+        }
+        
+        // Отображаем информацию о патронах
+        GUI.Label(new Rect(xPos, yPos, maxWidth, textSize1.y), ammoText, style);
+        GUI.Label(new Rect(xPos, yPos + textSize1.y + 5, maxWidth, textSize2.y), statusText, style);
+        
+        // Дополнительно: прогресс перезарядки (если есть)
+        if (isReloading)
+        {
+            string reloadText = "ЗАРЯЖАЮ...";
+            Vector2 reloadSize = style.CalcSize(new GUIContent(reloadText));
+            GUI.Label(new Rect(xPos, yPos + textSize1.y + textSize2.y + 15, reloadSize.x, reloadSize.y), 
+                     reloadText, style);
+        }
+    }
 }
