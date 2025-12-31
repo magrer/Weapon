@@ -146,10 +146,7 @@ public class Weapon : MonoBehaviour
         
         // Рисуем прицел
         GUI.DrawTexture(new Rect(x, y, size.x, size.y), crosshairTexture);
-    }
 
-    void OnGUI1()
-    {
         if (weapon == null)
         {
             Debug.LogWarning("Weapon не назначен в AmmoUI!");
